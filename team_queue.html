@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Bright Skies — Artifact Queue</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0d1117; --surface: #161b22; --surface2: #1f2937; --border: #30363d;
+    --text: #e6edf3; --muted: #8b949e; --accent: #58a6ff;
+    --high: #f85149; --high-bg: rgba(248,81,73,.12);
+    --med: #d29922;  --med-bg: rgba(210,153,34,.12);
+    --low: #3fb950;  --low-bg: rgba(63,185,80,.12);
+    --col-dl: #388bfd; --col-tr: #d29922; --col-done: #3fb950;
+  }
+  body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; padding: 24px; }
+  .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
+  .header h1 { font-size: 1.25rem; font-weight: 700; letter-spacing: -.3px; }
+  .header h1 span { color: var(--accent); }
+  .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  select, button { font-family: inherit; font-size: .85rem; border-radius: 6px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); padding: 6px 12px; cursor: pointer; transition: border-color .15s; }
+  select:focus, button:focus { outline: none; border-color: var(--accent); }
+  button.primary { background: var(--accent); color: #000; font-weight: 600; border-color: transparent; }
+  button.primary:hover { opacity: .88; }
+  button:not(.primary):hover { border-color: var(--accent); }
+  .stats { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
+  .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; min-width: 110px; text-align: center; }
+  .stat .n { font-size: 1.5rem; font-weight: 700; color: var(--accent); }
+  .stat .l { font-size: .75rem; color: var(--muted); margin-top: 2px; }
+  .board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; align-items: start; }
+  @media (max-width: 860px) { .board { grid-template-columns: 1fr; } }
+  .col { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .col-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 2px solid; font-weight: 600; font-size: .9rem; }
+  .col-header.dl { border-color: var(--col-dl); color: var(--col-dl); }
+  .col-header.tr { border-color: var(--col-tr); color: var(--col-tr); }
+  .col-header.dn { border-color: var(--col-done); color: var(--col-done); }
+  .col-badge { font-size: .75rem; font-weight: 500; background: var(--surface2); border-radius: 99px; padding: 2px 8px; color: var(--muted); }
+  .col-body { padding: 12px; display: flex; flex-direction: column; gap: 10px; min-height: 80px; }
+  .card { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 12px; transition: border-color .15s; }
+  .card:hover { border-color: var(--accent); }
+  .card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+  .card-name { font-weight: 600; font-size: .9rem; line-height: 1.3; }
+  .badge { font-size: .7rem; font-weight: 600; border-radius: 4px; padding: 2px 7px; white-space: nowrap; flex-shrink: 0; }
+  .badge.high { background: var(--high-bg); color: var(--high); }
+  .badge.med  { background: var(--med-bg);  color: var(--med); }
+  .badge.low  { background: var(--low-bg);  color: var(--low); }
+  .card-meta { font-size: .78rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px 12px; margin-bottom: 10px; }
+  .card-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  .assignee { font-size: .75rem; background: rgba(88,166,255,.12); color: var(--accent); border-radius: 99px; padding: 2px 9px; font-weight: 500; }
+  .card-actions { display: flex; gap: 6px; }
+  .card-actions button { font-size: .75rem; padding: 4px 10px; border-radius: 5px; }
+  .lock-notice { font-size: .73rem; color: var(--muted); font-style: italic; }
+  .empty { text-align: center; color: var(--muted); font-size: .85rem; padding: 24px 0; }
+  .overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 100; align-items: center; justify-content: center; }
+  .overlay.open { display: flex; }
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; width: 100%; max-width: 440px; margin: 16px; }
+  .modal h2 { font-size: 1rem; font-weight: 700; margin-bottom: 18px; }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: .8rem; color: var(--muted); margin-bottom: 5px; }
+  .field input, .field select { width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); font-size: .88rem; }
+  .modal-footer { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+  #toast { position: fixed; bottom: 24px; right: 24px; background: var(--surface2); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 8px; padding: 10px 16px; font-size: .85rem; opacity: 0; transform: translateY(8px); transition: opacity .25s, transform .25s; pointer-events: none; z-index: 200; }
+  #toast.show { opacity: 1; transform: translateY(0); }
+  .loading { text-align: center; color: var(--muted); padding: 40px; font-size: .9rem; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Bright Skies <span>/ Artifact Queue</span></h1>
+  <div class="controls">
+    <label style="font-size:.8rem;color:var(--muted)">Viewing as</label>
+    <select id="userSel">
+      <option value="Maram">Maram</option>
+      <option value="Tarnima" selected>Tarnima</option>
+      <option value="Akram">Akram</option>
+    </select>
+    <button class="primary" onclick="openModal()">+ Add Artifact</button>
+  </div>
+</div>
+
+<div class="stats">
+  <div class="stat"><div class="n" id="s-total">—</div><div class="l">Total</div></div>
+  <div class="stat"><div class="n" id="s-high" style="color:var(--high)">—</div><div class="l">High Priority</div></div>
+  <div class="stat"><div class="n" id="s-dl">—</div><div class="l">Download Req.</div></div>
+  <div class="stat"><div class="n" id="s-tr">—</div><div class="l">Transfer Req.</div></div>
+  <div class="stat"><div class="n" id="s-done" style="color:var(--col-done)">—</div><div class="l">Done</div></div>
+</div>
+
+<div class="board">
+  <div class="col">
+    <div class="col-header dl">Download Required <span class="col-badge" id="b-dl">—</span></div>
+    <div class="col-body" id="col-dl"><div class="loading">Loading…</div></div>
+  </div>
+  <div class="col">
+    <div class="col-header tr">Transfer Required <span class="col-badge" id="b-tr">—</span></div>
+    <div class="col-body" id="col-tr"><div class="loading">Loading…</div></div>
+  </div>
+  <div class="col">
+    <div class="col-header dn">Done <span class="col-badge" id="b-dn">—</span></div>
+    <div class="col-body" id="col-dn"><div class="loading">Loading…</div></div>
+  </div>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <h2>Add Artifact</h2>
+    <div class="field"><label>Artifact Name</label><input type="text" id="f-name" placeholder="e.g. OMol25-4M-subset" /></div>
+    <div class="field"><label>Type</label><select id="f-type"><option>Dataset</option><option>Model</option><option>Images</option></select></div>
+    <div class="field"><label>Priority</label><select id="f-priority"><option>High</option><option>Medium</option><option>Low</option></select></div>
+    <div class="field"><label>Assigned To</label><select id="f-assign"><option>Maram</option><option>Tarnima</option><option>Akram</option></select></div>
+    <div class="field"><label>Associated Proposal</label><input type="text" id="f-proposal" placeholder="e.g. NMR-2025-04" /></div>
+    <div class="modal-footer">
+      <button onclick="closeModal()">Cancel</button>
+      <button class="primary" onclick="addItem()">Add to Queue</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
+  import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyArB6IsKnl0LmNvFBkJqwRBaN7r9lloiPg",
+    authDomain: "data-movement-queue.firebaseapp.com",
+    projectId: "data-movement-queue",
+    storageBucket: "data-movement-queue.firebasestorage.app",
+    messagingSenderId: "230254905819",
+    appId: "1:230254905819:web:01b4c6513846d1c1d73ffe"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db  = getFirestore(app);
+  const col = collection(db, "artifact_queue");
+
+  const TRANSFER_MEMBERS = ['Maram', 'Tarnima'];
+  let queue = [];
+  let currentUser = 'Tarnima';
+
+  // ── Real-time listener ──
+  onSnapshot(col, snapshot => {
+    queue = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    render();
+  });
+
+  function priOrder(p) { return p === 'High' ? 0 : p === 'Medium' ? 1 : 2; }
+
+  function cardHTML(item) {
+    const canTransfer = TRANSFER_MEMBERS.includes(currentUser);
+    let actions = '';
+    if (item.stage === 'Done') {
+      actions = `<button data-id="${item.id}" data-action="remove">Remove</button>`;
+    } else if (item.stage === 'Transfer Required') {
+      actions = canTransfer
+        ? `<button class="primary" data-id="${item.id}" data-action="advance">Mark Done</button>`
+        : `<span class="lock-notice">🔒 Transfer: Maram or Tarnima</span>`;
+    } else {
+      actions = `<button class="primary" data-id="${item.id}" data-action="advance">Mark Downloaded</button>`;
+    }
+    return `
+      <div class="card">
+        <div class="card-top">
+          <div class="card-name">${item.name}</div>
+          <span class="badge ${item.priority.toLowerCase()}">${item.priority}</span>
+        </div>
+        <div class="card-meta">
+          <span>📦 ${item.type}</span>
+          <span>📄 ${item.proposal || '—'}</span>
+          <span>🗓 ${item.date}</span>
+        </div>
+        <div class="card-footer">
+          <span class="assignee">${item.assigned}</span>
+          <div class="card-actions">${actions}</div>
+        </div>
+      </div>`;
+  }
+
+  function render() {
+    currentUser = document.getElementById('userSel').value;
+    const stages  = ['Download Required', 'Transfer Required', 'Done'];
+    const colIds  = ['col-dl', 'col-tr', 'col-dn'];
+    const badgeIds = ['b-dl', 'b-tr', 'b-dn'];
+    stages.forEach((stage, i) => {
+      const items = queue.filter(x => x.stage === stage).sort((a,b) => priOrder(a.priority) - priOrder(b.priority));
+      document.getElementById(colIds[i]).innerHTML = items.length ? items.map(cardHTML).join('') : '<div class="empty">No items</div>';
+      document.getElementById(badgeIds[i]).textContent = items.length;
+    });
+    document.getElementById('s-total').textContent = queue.length;
+    document.getElementById('s-high').textContent  = queue.filter(x => x.priority === 'High').length;
+    document.getElementById('s-dl').textContent    = queue.filter(x => x.stage === 'Download Required').length;
+    document.getElementById('s-tr').textContent    = queue.filter(x => x.stage === 'Transfer Required').length;
+    document.getElementById('s-done').textContent  = queue.filter(x => x.stage === 'Done').length;
+  }
+
+  // ── Event delegation for card buttons ──
+  document.querySelector('.board').addEventListener('click', async e => {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    const id     = btn.dataset.id;
+    const action = btn.dataset.action;
+    const item   = queue.find(x => x.id === id);
+    if (!item) return;
+
+    if (action === 'remove') {
+      await deleteDoc(doc(db, 'artifact_queue', id));
+      toast('Item removed.');
+    } else if (action === 'advance') {
+      if (item.stage === 'Download Required') {
+        const trCount = queue.filter(x => x.stage === 'Transfer Required').length;
+        const newAssign = trCount % 2 === 0 ? 'Maram' : 'Tarnima';
+        await updateDoc(doc(db, 'artifact_queue', id), { stage: 'Transfer Required', assigned: newAssign });
+        toast(`${item.name} → Transfer Required (assigned ${newAssign})`);
+      } else if (item.stage === 'Transfer Required') {
+        await updateDoc(doc(db, 'artifact_queue', id), { stage: 'Done' });
+        toast(`${item.name} marked Done ✓`);
+      }
+    }
+  });
+
+  // ── Add item ──
+  window.addItem = async function() {
+    const name     = document.getElementById('f-name').value.trim();
+    const type     = document.getElementById('f-type').value;
+    const priority = document.getElementById('f-priority').value;
+    const assigned = document.getElementById('f-assign').value;
+    const proposal = document.getElementById('f-proposal').value.trim();
+    if (!name) { alert('Please enter an artifact name.'); return; }
+    await addDoc(col, {
+      name, type, priority, assigned,
+      proposal: proposal || '—',
+      stage: 'Download Required',
+      date: new Date().toISOString().slice(0,10)
+    });
+    document.getElementById('f-name').value = '';
+    document.getElementById('f-proposal').value = '';
+    closeModal();
+    toast(`${name} added to queue.`);
+  };
+
+  // ── Modal ──
+  window.openModal  = () => document.getElementById('overlay').classList.add('open');
+  window.closeModal = () => document.getElementById('overlay').classList.remove('open');
+  document.getElementById('overlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('overlay')) closeModal();
+  });
+
+  // ── User switcher ──
+  document.getElementById('userSel').addEventListener('change', render);
+
+  // ── Toast ──
+  window.toast = function(msg) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    setTimeout(() => el.classList.remove('show'), 2500);
+  };
+</script>
+</body>
+</html>
