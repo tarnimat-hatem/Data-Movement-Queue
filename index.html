@@ -25,6 +25,9 @@
   button.primary { background: var(--accent); color: #000; font-weight: 600; border-color: transparent; }
   button.primary:hover { opacity: .88; }
   button:not(.primary):hover { border-color: var(--accent); }
+  .notif-bar { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; margin-bottom: 20px; font-size: .82rem; color: var(--muted); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .notif-bar.granted { border-color: var(--low); color: var(--low); }
+  .notif-bar.denied  { border-color: var(--high); color: var(--high); }
   .stats { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
   .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; min-width: 110px; text-align: center; }
   .stat .n { font-size: 1.5rem; font-weight: 700; color: var(--accent); }
@@ -79,6 +82,11 @@
     </select>
     <button class="primary" onclick="openModal()">+ Add Artifact</button>
   </div>
+</div>
+
+<div class="notif-bar" id="notifBar">
+  🔔 Enable desktop notifications to get alerted when the queue changes.
+  <button onclick="requestNotifPermission()">Enable</button>
 </div>
 
 <div class="stats">
@@ -141,13 +149,66 @@
   const TRANSFER_MEMBERS = ['Maram', 'Tarnima'];
   let queue = [];
   let currentUser = 'Tarnima';
+  let isFirstLoad = true;
+
+  // ── Notifications ──
+  function updateNotifBar() {
+    const bar = document.getElementById('notifBar');
+    if (!('Notification' in window)) {
+      bar.textContent = '⚠️ Your browser does not support notifications.';
+      bar.classList.add('denied');
+      return;
+    }
+    if (Notification.permission === 'granted') {
+      bar.textContent = '✅ Desktop notifications enabled.';
+      bar.classList.add('granted');
+      bar.querySelector && bar.querySelector('button') && bar.querySelector('button').remove();
+    } else if (Notification.permission === 'denied') {
+      bar.textContent = '🔕 Notifications blocked — enable them in your browser settings.';
+      bar.classList.add('denied');
+    }
+  }
+
+  window.requestNotifPermission = async function() {
+    const result = await Notification.requestPermission();
+    updateNotifBar();
+  };
+
+  function notify(title, body) {
+    if (Notification.permission === 'granted') {
+      new Notification(title, { body, icon: 'https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg' });
+    }
+  }
+
+  updateNotifBar();
 
   // ── Real-time listener ──
   onSnapshot(col, snapshot => {
+    const prev = new Map(queue.map(x => [x.id, x]));
     queue = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    if (!isFirstLoad) {
+      snapshot.docChanges().forEach(change => {
+        const item = { id: change.doc.id, ...change.doc.data() };
+        if (change.type === 'added') {
+          notify('New Artifact Added', `${item.name} (${item.priority} priority) → ${item.assigned}`);
+        } else if (change.type === 'modified') {
+          const old = prev.get(item.id);
+          if (old && old.stage !== item.stage) {
+            if (item.stage === 'Transfer Required') {
+              notify('Transfer Required', `${item.name} is ready to transfer → assigned to ${item.assigned}`);
+            } else if (item.stage === 'Done') {
+              notify('Artifact Done ✓', `${item.name} has been marked as Done.`);
+            }
+          }
+        }
+      });
+    }
+    isFirstLoad = false;
     render();
   });
 
+  // ── Helpers ──
   function priOrder(p) { return p === 'High' ? 0 : p === 'Medium' ? 1 : 2; }
 
   function cardHTML(item) {
@@ -182,8 +243,8 @@
 
   function render() {
     currentUser = document.getElementById('userSel').value;
-    const stages  = ['Download Required', 'Transfer Required', 'Done'];
-    const colIds  = ['col-dl', 'col-tr', 'col-dn'];
+    const stages   = ['Download Required', 'Transfer Required', 'Done'];
+    const colIds   = ['col-dl', 'col-tr', 'col-dn'];
     const badgeIds = ['b-dl', 'b-tr', 'b-dn'];
     stages.forEach((stage, i) => {
       const items = queue.filter(x => x.stage === stage).sort((a,b) => priOrder(a.priority) - priOrder(b.priority));
@@ -197,13 +258,13 @@
     document.getElementById('s-done').textContent  = queue.filter(x => x.stage === 'Done').length;
   }
 
-  // ── Event delegation for card buttons ──
+  // ── Card actions ──
   document.querySelector('.board').addEventListener('click', async e => {
     const btn = e.target.closest('[data-action]');
     if (!btn) return;
-    const id     = btn.dataset.id;
+    const id = btn.dataset.id;
     const action = btn.dataset.action;
-    const item   = queue.find(x => x.id === id);
+    const item = queue.find(x => x.id === id);
     if (!item) return;
 
     if (action === 'remove') {
@@ -214,7 +275,7 @@
         const trCount = queue.filter(x => x.stage === 'Transfer Required').length;
         const newAssign = trCount % 2 === 0 ? 'Maram' : 'Tarnima';
         await updateDoc(doc(db, 'artifact_queue', id), { stage: 'Transfer Required', assigned: newAssign });
-        toast(`${item.name} → Transfer Required (assigned ${newAssign})`);
+        toast(`${item.name} → Transfer Required`);
       } else if (item.stage === 'Transfer Required') {
         await updateDoc(doc(db, 'artifact_queue', id), { stage: 'Done' });
         toast(`${item.name} marked Done ✓`);
@@ -249,10 +310,8 @@
     if (e.target === document.getElementById('overlay')) closeModal();
   });
 
-  // ── User switcher ──
   document.getElementById('userSel').addEventListener('change', render);
 
-  // ── Toast ──
   window.toast = function(msg) {
     const el = document.getElementById('toast');
     el.textContent = msg;
